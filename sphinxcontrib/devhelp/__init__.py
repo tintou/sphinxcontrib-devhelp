@@ -26,6 +26,49 @@ if TYPE_CHECKING:
 import xml.etree.ElementTree as etree
 
 __version__ = '2.0.0'
+
+# Maps "domain:objtype" to devhelp keyword type attribute values.
+# Unmapped entries fall back to 'function' (the historical default).
+_DOMAIN_TYPE_MAP: dict[str, str] = {
+    # C domain
+    'c:function': 'function',
+    'c:macro': 'macro',
+    'c:struct': 'struct',
+    'c:union': 'union',
+    'c:enum': 'enum',
+    'c:enumerator': 'enumerator',
+    'c:type': 'typedef',
+    'c:member': 'id',
+    'c:var': 'id',
+    # C++ domain
+    'cpp:function': 'function',
+    'cpp:class': 'struct',
+    'cpp:struct': 'struct',
+    'cpp:union': 'union',
+    'cpp:enum': 'enum',
+    'cpp:enumerator': 'enumerator',
+    'cpp:type': 'typedef',
+    'cpp:member': 'id',
+    # JavaScript domain
+    'js:function': 'function',
+    'js:method': 'function',
+    'js:class': 'struct',
+    'js:attribute': 'property',
+    'js:data': 'id',
+    'js:module': 'id',
+    # Python domain
+    'py:function': 'function',
+    'py:method': 'function',
+    'py:classmethod': 'function',
+    'py:staticmethod': 'function',
+    'py:class': 'struct',
+    'py:exception': 'struct',
+    'py:attribute': 'property',
+    'py:property': 'property',
+    'py:type': 'typedef',
+    'py:module': 'id',
+    'py:data': 'id',
+}
 __version_info__ = (2, 0, 0)
 
 logger = logging.getLogger(__name__)
@@ -94,6 +137,13 @@ class DevhelpBuilder(StandaloneHTMLBuilder):
         for node in tocdoc.findall(matcher):
             write_toc(node, chapters)
 
+        # Build anchor → devhelp keyword type from all domain objects.
+        anchor_type_map: dict[str, str] = {}
+        for domain in self.env.domains.values():
+            for _name, _disp, obj_type, _doc, anchor, _prio in domain.get_objects():
+                kw_type = _DOMAIN_TYPE_MAP.get(f'{domain.name}:{obj_type}', 'function')
+                anchor_type_map[anchor] = kw_type
+
         # Index
         functions = etree.SubElement(root, 'functions')
         index = IndexEntries(self.env).create_index(self)
@@ -102,13 +152,19 @@ class DevhelpBuilder(StandaloneHTMLBuilder):
             if len(refs) == 0:
                 pass
             elif len(refs) == 1:
-                etree.SubElement(functions, 'function',
-                                 name=title, link=refs[0][1])
+                link = refs[0][1]
+                anchor = link.rsplit('#', 1)[-1] if '#' in link else ''
+                etree.SubElement(functions, 'keyword',
+                                 type=anchor_type_map.get(anchor, 'function'),
+                                 name=title, link=link)
             else:
                 for i, ref in enumerate(refs):
-                    etree.SubElement(functions, 'function',
+                    link = ref[1]
+                    anchor = link.rsplit('#', 1)[-1] if '#' in link else ''
+                    etree.SubElement(functions, 'keyword',
+                                     type=anchor_type_map.get(anchor, 'function'),
                                      name="[%d] %s" % (i, title),
-                                     link=ref[1])
+                                     link=link)
 
             if subitems:
                 parent_title = re.sub(r'\s*\(.*\)\s*$', '', title)

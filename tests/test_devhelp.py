@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import gzip
+import xml.etree.ElementTree as etree
 from time import sleep
 from typing import TYPE_CHECKING
 
@@ -14,6 +16,28 @@ if TYPE_CHECKING:
 @pytest.mark.sphinx('devhelp', testroot='basic')
 def test_basic(app: Sphinx) -> None:
     app.builder.build_all()
+
+
+@pytest.mark.sphinx('devhelp', testroot='basic', freshenv=True)
+def test_keyword_types(app: Sphinx) -> None:
+    app.builder.build_all()
+
+    outdir = app.outdir
+    basename = app.config.devhelp_basename
+    xmlfile = outdir / f'{basename}.devhelp.gz'
+
+    with gzip.open(str(xmlfile)) as f:
+        tree = etree.parse(f)
+
+    keywords = {
+        kw.get('name'): kw.get('type')
+        for kw in tree.getroot().find('functions').findall('keyword')
+    }
+
+    assert keywords.get('built-in function my_function()') == 'function'
+    assert keywords.get('MyClass (built-in class)') == 'struct'
+    assert keywords.get('MY_CONSTANT (built-in variable)') == 'id'
+    assert keywords.get('my_attr (MyClass attribute)') == 'property'
 
 
 @pytest.mark.sphinx('devhelp', testroot='basic', freshenv=True)
